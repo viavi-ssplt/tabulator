@@ -154,9 +154,8 @@ export default class ResizeColumns extends Module{
 				self._mouseDown(e, nearestColumn, handle);
 			};
 			
-			handle.addEventListener("mousedown", handleDown);
-			handle.addEventListener("touchstart", handleDown, {passive: true});
-			
+			handle.addEventListener("pointerdown", handleDown);
+
 			//resize column on  double click
 			handle.addEventListener("dblclick", (e) => {
 				var oldWidth = nearestColumn.getWidth();
@@ -212,7 +211,7 @@ export default class ResizeColumns extends Module{
 	}
 	
 	resize(e, column){
-		var x = typeof e.clientX === "undefined" ? e.touches[0].clientX : e.clientX,
+		var x = e.clientX,
 		startDiff = x - this.startX,
 		moveDiff = x - this.latestX,
 		blockedBefore, blockedAfter;
@@ -256,7 +255,7 @@ export default class ResizeColumns extends Module{
 	}
 
 	calcGuidePosition(e, column, handle) {
-		var mouseX = typeof e.clientX === "undefined" ? e.touches[0].clientX : e.clientX,
+		var mouseX = e.clientX,
 		handleX = handle.getBoundingClientRect().x - this.table.element.getBoundingClientRect().x,
 		tableX = this.table.element.getBoundingClientRect().x,
 		columnX = column.element.getBoundingClientRect().left - tableX,
@@ -277,6 +276,8 @@ export default class ResizeColumns extends Module{
 	_mouseDown(e, column, handle){
 		var self = this,
 		guideEl;
+
+		handle.setPointerCapture(e.pointerId);
 
 		this.dispatchExternal("columnResizing", column.getComponent());
 
@@ -314,12 +315,9 @@ export default class ResizeColumns extends Module{
 				column.checkCellHeights();
 			}
 			
-			document.body.removeEventListener("mouseup", mouseUp);
-			document.body.removeEventListener("mousemove", mouseMove);
-			
-			handle.removeEventListener("touchmove", mouseMove);
-			handle.removeEventListener("touchend", mouseUp);
-			
+			handle.removeEventListener("pointerup", mouseUp);
+			handle.removeEventListener("pointermove", mouseMove);
+
 			self.table.element.classList.remove("tabulator-block-select");
 			
 			if(self.startWidth !== column.getWidth()){
@@ -337,13 +335,11 @@ export default class ResizeColumns extends Module{
 			self.startColumn.modules.edit.blocked = true;
 		}
 		
-		self.startX = typeof e.clientX === "undefined" ? e.touches[0].clientX : e.clientX;
+		self.startX = e.clientX;
 		self.latestX = self.startX;
 		self.startWidth = column.getWidth();
 		
-		document.body.addEventListener("mousemove", mouseMove);
-		document.body.addEventListener("mouseup", mouseUp);
-		handle.addEventListener("touchmove", mouseMove, {passive: true});
-		handle.addEventListener("touchend", mouseUp);
+		handle.addEventListener("pointermove", mouseMove);
+		handle.addEventListener("pointerup", mouseUp);
 	}
 }
