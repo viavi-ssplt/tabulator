@@ -389,6 +389,7 @@ export default class VirtualDomVertical extends Renderer{
 
 	_addTopRow(rows, fillableSpace){
 		var table = this.tableElement,
+		insertRows = [],
 		addedRows = [],
 		paddingAdjust = 0,
 		index = this.vDomTop -1,
@@ -407,7 +408,7 @@ export default class VirtualDomVertical extends Renderer{
 					if(fillableSpace >= rowHeight){
 
 						this.styleRow(row, index);
-						table.insertBefore(row.getElement(), table.firstChild);
+						insertRows.push(row);
 
 						if(!row.initialized || !row.heightInitialized){
 							addedRows.push(row);
@@ -463,10 +464,14 @@ export default class VirtualDomVertical extends Renderer{
 			table.style.paddingTop = this.vDomTopPad + "px";
 			this.vDomScrollPosTop -= paddingAdjust;
 		}
+
+		for (let row of insertRows){
+			table.insertBefore(row.getElement(), table.firstChild);
+		}
 	}
 
 	_removeTopRow(rows, fillableSpace){
-		var removableRows = [],
+		var removeRows = [],
 		paddingAdjust = 0,
 		i = 0,
 		working = true;
@@ -484,7 +489,7 @@ export default class VirtualDomVertical extends Renderer{
 					fillableSpace -= rowHeight;
 					paddingAdjust += rowHeight;
 
-					removableRows.push(row);
+					removeRows.push(row);
 					i++;
 				}else{
 					working = false;
@@ -494,18 +499,18 @@ export default class VirtualDomVertical extends Renderer{
 			}
 		}
 
-		for (let row of removableRows){
+		if(paddingAdjust){
+			this.vDomTopPad += paddingAdjust;
+			this.tableElement.style.paddingTop = this.vDomTopPad + "px";
+			this.vDomScrollPosTop += this.vDomTop ? paddingAdjust : paddingAdjust + this.vDomWindowBuffer;
+		}
+
+		for (let row of removeRows){
 			let rowEl = row.getElement();
 
 			if(rowEl.parentNode){
 				rowEl.parentNode.removeChild(rowEl);
 			}
-		}
-
-		if(paddingAdjust){
-			this.vDomTopPad += paddingAdjust;
-			this.tableElement.style.paddingTop = this.vDomTopPad + "px";
-			this.vDomScrollPosTop += this.vDomTop ? paddingAdjust : paddingAdjust + this.vDomWindowBuffer;
 		}
 	}
 
