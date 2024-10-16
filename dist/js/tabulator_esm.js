@@ -14438,6 +14438,8 @@ class MoveColumns extends Module{
 		
 		this.placeholderElement = this.createPlaceholderElement();
 		this.hoverElement = false; //floating column header element
+		this.hoverOverElement = false; //element most recently hovered over
+		this.hoverOverColumn = false; //column most recently hovered over
 		this.checkTimeout = false; //click check timeout holder
 		this.checkPeriod = 250; //period to wait on mousedown to consider this a move and not a click
 		this.moving = false; //currently moving column
@@ -14447,7 +14449,6 @@ class MoveColumns extends Module{
 		this.autoScrollMargin = 40; //auto scroll on edge when within margin
 		this.autoScrollStep = 5; //auto scroll distance in pixels
 		this.autoScrollTimeout = false; //auto scroll timeout
-		this.touchMove = false;
 		
 		this.moveHover = this.moveHover.bind(this);
 		this.endMove = this.endMove.bind(this);
@@ -14485,7 +14486,7 @@ class MoveColumns extends Module{
 			
 			config.mousemove = function(e){
 				if(column.parent === self.moving.parent){
-					if((((self.touchMove ? e.touches[0].pageX : e.pageX) - Helpers.elOffset(colEl).left) + self.table.columnManager.contentsElement.scrollLeft) > (column.getWidth() / 2)){
+					if((e.pageX - Helpers.elOffset(colEl).left + self.table.columnManager.contentsElement.scrollLeft) > (column.getWidth() / 2)){
 						if(self.toCol !== column || !self.toColAfter){
 							colEl.parentNode.insertBefore(self.placeholderElement, colEl.nextSibling);
 							self.moveColumn(column, true);
@@ -14499,8 +14500,7 @@ class MoveColumns extends Module{
 				}
 			}.bind(self);
 			
-			colEl.addEventListener("mousedown", function(e){
-				self.touchMove = false;
+			colEl.addEventListener("pointerdown", function(e){
 				if(e.which === 1){
 					self.checkTimeout = setTimeout(function(){
 						self.startMove(e, column);
@@ -14508,100 +14508,23 @@ class MoveColumns extends Module{
 				}
 			});
 			
-			colEl.addEventListener("mouseup", function(e){
+			colEl.addEventListener("pointerup", function(e){
 				if(e.which === 1){
 					if(self.checkTimeout){
 						clearTimeout(self.checkTimeout);
 					}
 				}
 			});
-			
-			self.bindTouchEvents(column);
 		}
 		
 		column.modules.moveColumn = config;
-	}
-	
-	bindTouchEvents(column){
-		var colEl = column.getElement(),
-		startXMove = false, //shifting center position of the cell
-		nextCol, prevCol, nextColWidth, prevColWidth, nextColWidthLast, prevColWidthLast;
-		
-		colEl.addEventListener("touchstart", (e) => {
-			this.checkTimeout = setTimeout(() => {
-				this.touchMove = true;
-				nextCol = column.nextColumn();
-				nextColWidth = nextCol ? nextCol.getWidth()/2 : 0;
-				prevCol = column.prevColumn();
-				prevColWidth = prevCol ? prevCol.getWidth()/2 : 0;
-				nextColWidthLast = 0;
-				prevColWidthLast = 0;
-				startXMove = false;
-				
-				this.startMove(e, column);
-			}, this.checkPeriod);
-		}, {passive: true});
-		
-		colEl.addEventListener("touchmove", (e) => {
-			var diff, moveToCol;
-			
-			if(this.moving){
-				this.moveHover(e);
-				
-				if(!startXMove){
-					startXMove = e.touches[0].pageX;
-				}
-				
-				diff = e.touches[0].pageX - startXMove;
-				
-				if(diff > 0){
-					if(nextCol && diff - nextColWidthLast > nextColWidth){
-						moveToCol = nextCol;
-						
-						if(moveToCol !== column){
-							startXMove = e.touches[0].pageX;
-							moveToCol.getElement().parentNode.insertBefore(this.placeholderElement, moveToCol.getElement().nextSibling);
-							this.moveColumn(moveToCol, true);
-						}
-					}
-				}else {
-					if(prevCol && -diff - prevColWidthLast >  prevColWidth){
-						moveToCol = prevCol;
-						
-						if(moveToCol !== column){
-							startXMove = e.touches[0].pageX;
-							moveToCol.getElement().parentNode.insertBefore(this.placeholderElement, moveToCol.getElement());
-							this.moveColumn(moveToCol, false);
-						}
-					}
-				}
-				
-				if(moveToCol){
-					nextCol = moveToCol.nextColumn();
-					nextColWidthLast = nextColWidth;
-					nextColWidth = nextCol ? nextCol.getWidth() / 2 : 0;
-					prevCol = moveToCol.prevColumn();
-					prevColWidthLast = prevColWidth;
-					prevColWidth = prevCol ? prevCol.getWidth() / 2 : 0;
-				}
-			}
-		}, {passive: true});
-		
-		colEl.addEventListener("touchend", (e) => {
-			if(this.checkTimeout){
-				clearTimeout(this.checkTimeout);
-			}
-			if(this.moving){
-				this.endMove(e);
-			}
-		});
 	}
 	
 	startMove(e, column){
 		var element = column.getElement(),
 		headerElement = this.table.columnManager.getContentsElement(),
 		headersElement = this.table.columnManager.getHeadersElement();
-		
+
 		//Prevent moving columns when range selection is active
 		if(this.table.modules.selectRange && this.table.modules.selectRange.columnSelection){
 			if(this.table.modules.selectRange.mousedown && this.table.modules.selectRange.selecting === "column"){
@@ -14609,8 +14532,10 @@ class MoveColumns extends Module{
 			}
 		}
 
+		headerElement.setPointerCapture(e.pointerId);
+
 		this.moving = column;
-		this.startX = (this.touchMove ? e.touches[0].pageX : e.pageX) - Helpers.elOffset(element).left;
+		this.startX = e.pageX - Helpers.elOffset(element).left;
 		
 		this.table.element.classList.add("tabulator-block-select");
 		
@@ -14629,35 +14554,15 @@ class MoveColumns extends Module{
 		
 		this.hoverElement.style.left = "0";
 		this.hoverElement.style.bottom = (headerElement.clientHeight - headersElement.offsetHeight) + "px";
-		
-		if(!this.touchMove){
-			this._bindMouseMove();
-			
-			document.body.addEventListener("mousemove", this.moveHover);
-			document.body.addEventListener("mouseup", this.endMove);
-		}
+
+		headerElement.addEventListener("pointermove", this.moveHover);
+		headerElement.addEventListener("pointerup", this.endMove);
 		
 		this.moveHover(e);
 
 		this.dispatch("column-moving", e, this.moving);
 	}
-	
-	_bindMouseMove(){
-		this.table.columnManager.columnsByIndex.forEach(function(column){
-			if(column.modules.moveColumn.mousemove){
-				column.getElement().addEventListener("mousemove", column.modules.moveColumn.mousemove);
-			}
-		});
-	}
-	
-	_unbindMouseMove(){
-		this.table.columnManager.columnsByIndex.forEach(function(column){
-			if(column.modules.moveColumn.mousemove){
-				column.getElement().removeEventListener("mousemove", column.modules.moveColumn.mousemove);
-			}
-		});
-	}
-	
+
 	moveColumn(column, after){
 		var movingCells = this.moving.getCells();
 		
@@ -14684,9 +14589,8 @@ class MoveColumns extends Module{
 	}
 	
 	endMove(e){
-		if(e.which === 1 || this.touchMove){
-			this._unbindMouseMove();
-			
+		if(e.which === 1){
+
 			this.placeholderElement.parentNode.insertBefore(this.moving.getElement(), this.placeholderElement.nextSibling);
 			this.placeholderElement.parentNode.removeChild(this.placeholderElement);
 			this.hoverElement.parentNode.removeChild(this.hoverElement);
@@ -14700,20 +14604,18 @@ class MoveColumns extends Module{
 			this.moving = false;
 			this.toCol = false;
 			this.toColAfter = false;
-			
-			if(!this.touchMove){
-				document.body.removeEventListener("mousemove", this.moveHover);
-				document.body.removeEventListener("mouseup", this.endMove);
-			}
+
+			e.target.removeEventListener("pointermove", this.moveHover);
+			e.target.removeEventListener("pointerup", this.endMove);
 		}
 	}
 	
 	moveHover(e){
 		var columnHolder = this.table.columnManager.getContentsElement(),
 		scrollLeft = columnHolder.scrollLeft,
-		xPos = ((this.touchMove ? e.touches[0].pageX : e.pageX) - Helpers.elOffset(columnHolder).left) + scrollLeft,
+		xPos = e.pageX - Helpers.elOffset(columnHolder).left + scrollLeft,
 		scrollPos;
-		
+
 		this.hoverElement.style.left = (xPos - this.startX) + "px";
 		
 		if(xPos - scrollLeft < this.autoScrollMargin){
@@ -14735,6 +14637,27 @@ class MoveColumns extends Module{
 				}, 1);
 			}
 		}
+
+		const column = this.getColumnFromPoint(e);
+		if (column) {
+			column.modules.moveColumn.mousemove(e);
+		}
+	}
+
+	getColumnFromPoint(e){
+		const element = document.elementFromPoint(e.pageX, e.pageY);
+		if (element === this.hoverOverElement) {
+			return this.hoverOverColumn;
+		}
+		this.hoverOverElement = element;
+		let columnElement = element;
+		while (columnElement && !columnElement.classList.contains("tabulator-col")) {
+			columnElement = columnElement.parentElement;
+		}
+		this.hoverOverColumn = columnElement ? this.table.columnManager.columnsByIndex.find(function(column){
+			return column.getElement() === columnElement;
+		}) || false : false;
+		return this.hoverOverColumn;
 	}
 }
 
@@ -17838,11 +17761,11 @@ class ResizeColumns extends Module{
 		if(column.modules.frozen){
 			if(this.table.modules.frozenColumns.leftColumns.includes(column)){
 				this.table.modules.frozenColumns.leftColumns.forEach((col) => {
-					this.reinitializeColumn(col);
+					// this.reinitializeColumn(col);
 				});
 			}else if(this.table.modules.frozenColumns.rightColumns.includes(column)){
 				this.table.modules.frozenColumns.rightColumns.forEach((col) => {
-					this.reinitializeColumn(col);
+					// this.reinitializeColumn(col);
 				});
 			}
 		}
@@ -17917,9 +17840,8 @@ class ResizeColumns extends Module{
 				self._mouseDown(e, nearestColumn, handle);
 			};
 			
-			handle.addEventListener("mousedown", handleDown);
-			handle.addEventListener("touchstart", handleDown, {passive: true});
-			
+			handle.addEventListener("pointerdown", handleDown);
+
 			//resize column on  double click
 			handle.addEventListener("dblclick", (e) => {
 				var oldWidth = nearestColumn.getWidth();
@@ -17975,7 +17897,7 @@ class ResizeColumns extends Module{
 	}
 	
 	resize(e, column){
-		var x = typeof e.clientX === "undefined" ? e.touches[0].clientX : e.clientX,
+		var x = e.clientX,
 		startDiff = x - this.startX,
 		moveDiff = x - this.latestX,
 		blockedBefore, blockedAfter;
@@ -18019,7 +17941,7 @@ class ResizeColumns extends Module{
 	}
 
 	calcGuidePosition(e, column, handle) {
-		var mouseX = typeof e.clientX === "undefined" ? e.touches[0].clientX : e.clientX,
+		var mouseX = e.clientX,
 		handleX = handle.getBoundingClientRect().x - this.table.element.getBoundingClientRect().x,
 		tableX = this.table.element.getBoundingClientRect().x,
 		columnX = column.element.getBoundingClientRect().left - tableX,
@@ -18040,6 +17962,8 @@ class ResizeColumns extends Module{
 	_mouseDown(e, column, handle){
 		var self = this,
 		guideEl;
+
+		handle.setPointerCapture(e.pointerId);
 
 		this.dispatchExternal("columnResizing", column.getComponent());
 
@@ -18077,12 +18001,9 @@ class ResizeColumns extends Module{
 				column.checkCellHeights();
 			}
 			
-			document.body.removeEventListener("mouseup", mouseUp);
-			document.body.removeEventListener("mousemove", mouseMove);
-			
-			handle.removeEventListener("touchmove", mouseMove);
-			handle.removeEventListener("touchend", mouseUp);
-			
+			handle.removeEventListener("pointerup", mouseUp);
+			handle.removeEventListener("pointermove", mouseMove);
+
 			self.table.element.classList.remove("tabulator-block-select");
 			
 			if(self.startWidth !== column.getWidth()){
@@ -18100,14 +18021,12 @@ class ResizeColumns extends Module{
 			self.startColumn.modules.edit.blocked = true;
 		}
 		
-		self.startX = typeof e.clientX === "undefined" ? e.touches[0].clientX : e.clientX;
+		self.startX = e.clientX;
 		self.latestX = self.startX;
 		self.startWidth = column.getWidth();
 		
-		document.body.addEventListener("mousemove", mouseMove);
-		document.body.addEventListener("mouseup", mouseUp);
-		handle.addEventListener("touchmove", mouseMove, {passive: true});
-		handle.addEventListener("touchend", mouseUp);
+		handle.addEventListener("pointermove", mouseMove);
+		handle.addEventListener("pointerup", mouseUp);
 	}
 }
 
@@ -25175,6 +25094,7 @@ class VirtualDomVertical extends Renderer{
 
 	_addTopRow(rows, fillableSpace){
 		var table = this.tableElement,
+		insertRows = [],
 		addedRows = [],
 		paddingAdjust = 0,
 		index = this.vDomTop -1,
@@ -25193,7 +25113,7 @@ class VirtualDomVertical extends Renderer{
 					if(fillableSpace >= rowHeight){
 
 						this.styleRow(row, index);
-						table.insertBefore(row.getElement(), table.firstChild);
+						insertRows.push(row);
 
 						if(!row.initialized || !row.heightInitialized){
 							addedRows.push(row);
@@ -25249,10 +25169,14 @@ class VirtualDomVertical extends Renderer{
 			table.style.paddingTop = this.vDomTopPad + "px";
 			this.vDomScrollPosTop -= paddingAdjust;
 		}
+
+		for (let row of insertRows){
+			table.insertBefore(row.getElement(), table.firstChild);
+		}
 	}
 
 	_removeTopRow(rows, fillableSpace){
-		var removableRows = [],
+		var removeRows = [],
 		paddingAdjust = 0,
 		i = 0,
 		working = true;
@@ -25270,7 +25194,7 @@ class VirtualDomVertical extends Renderer{
 					fillableSpace -= rowHeight;
 					paddingAdjust += rowHeight;
 
-					removableRows.push(row);
+					removeRows.push(row);
 					i++;
 				}else {
 					working = false;
@@ -25280,18 +25204,18 @@ class VirtualDomVertical extends Renderer{
 			}
 		}
 
-		for (let row of removableRows){
+		if(paddingAdjust){
+			this.vDomTopPad += paddingAdjust;
+			this.tableElement.style.paddingTop = this.vDomTopPad + "px";
+			this.vDomScrollPosTop += this.vDomTop ? paddingAdjust : paddingAdjust + this.vDomWindowBuffer;
+		}
+
+		for (let row of removeRows){
 			let rowEl = row.getElement();
 
 			if(rowEl.parentNode){
 				rowEl.parentNode.removeChild(rowEl);
 			}
-		}
-
-		if(paddingAdjust){
-			this.vDomTopPad += paddingAdjust;
-			this.tableElement.style.paddingTop = this.vDomTopPad + "px";
-			this.vDomScrollPosTop += this.vDomTop ? paddingAdjust : paddingAdjust + this.vDomWindowBuffer;
 		}
 	}
 
